@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <plib/spi.h>
 #include "plib/usart.h"
-#include "../test_c.X/../../D/dev/pic/lib/myw5500/myw5500.h"
+#include "../../D/dev/pic/lib/myw5500/myw5500.h"
 
 #pragma config FOSC = INTIO67
 #pragma config WDTEN = OFF, LVP = OFF
@@ -43,7 +43,190 @@ int main(void) {
 
     setupUSART();
     setupSPI();
+
+       
+        setSocketTCPMode(SOCKET_1);
+        setSocketSourcePort(SOCKET_1, 4443);
+        openSocket(SOCKET_1);
+
+        uint8_t status = readSocketStatus(SOCKET_1);
+        delayOneSecond();
+        if (status != SOCK_INIT) {
+            while(BusyUSART());
+            putsUSART((char*)"\r\nCannot init socket.");
+            closeSocket(SOCKET_1);
+            return -1;
+        } else {
+            while(BusyUSART());
+            putsUSART((char*)"\r\nSocket initialized.");
+        }
+
+        uint8_t address[4] = {0xC0, 0xA8, 0x01, 0x67};   //192.168.1.103
+        setSocketDestinationIPAddress(SOCKET_1, address);
+        setSocketDestinationPort(SOCKET_1, 4444);
+        connect(SOCKET_1);
+
+        while(1) {
+            delayOneSecond();
+            status = readSocketStatus(SOCKET_1);
+            if (status != SOCK_ESTABLISHED) {
+                while(BusyUSART());
+                putsUSART((char*)"\r\nSocket not established: ");
+                unsigned char numBytesString[10];
+                itoa(numBytesString, status, 10);
+                while(BusyUSART());
+                putsUSART(numBytesString);
+                closeSocket(SOCKET_1);
+                return -1;
+            } else {
+                while(BusyUSART());
+                putsUSART((char*)"\r\nSocket established: ");
+
+                break;
+            }
+        }
+
+        
+    
+        //sending process
+
+        uint16_t freeSize = readTxFreeSize(SOCKET_1);
+        while(BusyUSART());
+        putsUSART((char*)"\r\nTx buffer free size: ");
+        unsigned char freeSizeString[10];
+        itoa(freeSizeString, freeSize, 10);
+        while(BusyUSART());
+        putsUSART(freeSizeString);
+
+        unsigned char data[] = "GET /enlighten/calais.asmx HTTP/1.1\n";
+        while(BusyUSART());
+        putsUSART((char*)"\r\nNumber of bytes to send: ");
+        unsigned char numBytesString[10];
+        itoa(numBytesString, sizeof(data), 10);
+        while(BusyUSART());
+        putsUSART(numBytesString);
+
+
+        uint16_t writePointer = readWritePointer(SOCKET_1);
+        uint8_t writePointerH, writePointerL;
+        writePointerH = (writePointer >> 8) & 0xFF;
+        writePointerL = writePointer & 0xFF;
+        while(BusyUSART());
+        putsUSART((char*)"\r\nWrite Buffer high byte: ");
+            //unsigned char numBytesString[10];
+            itoa(numBytesString, writePointerH, 10);
+            while(BusyUSART());
+            putsUSART(numBytesString);
+        while(BusyUSART());
+        putsUSART((char*)"\r\nWrite Buffer low byte: ");
+            itoa(numBytesString, writePointerL, 10);
+            while(BusyUSART());
+            putsUSART(numBytesString);
+                
+        writeToSocketTxBuffer(SOCKET_1_TX_BUFFER, writePointer, data, sizeof(data));
+        writePointer += sizeof(data);
+
+        writePointerH = (writePointer >> 8) & 0xFF;
+        writePointerL = writePointer & 0xFF;
+        while(BusyUSART());
+        putsUSART((char*)"\r\nWrite Buffer high byte: ");
+            //unsigned char numBytesString[10];
+            itoa(numBytesString, writePointerH, 10);
+            while(BusyUSART());
+            putsUSART(numBytesString);
+        while(BusyUSART());
+        putsUSART((char*)"\r\nWrite Buffer low byte: ");
+            itoa(numBytesString, writePointerL, 10);
+            while(BusyUSART());
+            putsUSART(numBytesString);
+
+        increaseWritePointer(SOCKET_1, writePointer);
+
+        send(SOCKET_1);
+
+        writePointer = readWritePointer(SOCKET_1);
+        writePointerH = (writePointer >> 8) & 0xFF;
+        writePointerL = writePointer & 0xFF;
+        while(BusyUSART());
+        putsUSART((char*)"\r\nWrite Buffer high byte(after): ");
+            //unsigned char numBytesString[10];
+            itoa(numBytesString, writePointerH, 10);
+            while(BusyUSART());
+            putsUSART(numBytesString);
+        while(BusyUSART());
+        putsUSART((char*)"\r\nWrite Buffer low byte(after): ");
+            itoa(numBytesString, writePointerL, 10);
+            while(BusyUSART());
+            putsUSART(numBytesString);
+
+
+//receive process
+        uint16_t numBytesReceived = readNumberOfBytesReceived(SOCKET_1);
+        while(BusyUSART());
+        putsUSART((char*)"\r\nNumber of bytes received: ");
+        unsigned char numBytesString[10];
+        itoa(numBytesString, numBytesReceived, 10);
+        while(BusyUSART());
+        putsUSART(numBytesString);
+
+        uint8_t readBuffer[128];
+        uint16_t readPointer = readReadPointer(SOCKET_1);
+        readFromSocketRxBufferLen(SOCKET_1_RX_BUFFER, readPointer, readBuffer, numBytesReceived);
+
+        for(int i=0; i<numBytesReceived; i++) {
+            while(BusyUSART());
+            WriteUSART(readBuffer[i]);
+        }
+
+        readPointer += numBytesReceived;
+        increaseReadPointer(SOCKET_1, readPointer);
+        receive(SOCKET_1);       
+        
+
+        delayOneSecond();
+        status = readSocketStatus(SOCKET_1);
+        delayOneSecond();
+        if (status == SOCK_CLOSE_WAIT) {
+            clearInterrupts(SOCKET_1);
+            close(SOCKET_1);
+            while(BusyUSART());
+            putsUSART((char*)"\r\nsocket closed1.");
+           // return 0;
+        }
+
+        disconnect(SOCKET_1);
+        do {
+            delayOneSecond();
+            status = readSocketStatus(SOCKET_1);
+        //    while(BusyUSART());
+        //    WriteUSART(status);
+            unsigned char numBytesString[10];
+            itoa(numBytesString, status, 10);
+            while(BusyUSART());
+            putsUSART(numBytesString);
+
+            if (status == SOCK_CLOSE_WAIT) {
+            clearInterrupts(SOCKET_1);
+            close(SOCKET_1);
+            while(BusyUSART());
+            putsUSART((char*)"\r\nsocket closed1.");
+            break;
+           // return 0;
+        }
+        } while (status != SOCK_CLOSED);
+        //if (status == SOCK_CLOSED) {
+            close(SOCKET_1);
+            while(BusyUSART());
+            putsUSART((char*)"\r\nsocket closed.");
+        //}
+
+        while(BusyUSART());
+        putsUSART((char*)"\r\nfinito.");
+
     CloseSPI();
+
+    while(1);
+    return 0;
 }
 
 void setupUSART(void) {
