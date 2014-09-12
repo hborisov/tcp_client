@@ -1,6 +1,6 @@
 /* 
  * File:   tcp_client.c
- * Author: hbb
+ * Author: Hristo Borisov
  *
  * Created on August 31, 2014, 9:56 AM
  */
@@ -9,6 +9,7 @@
 
 #include <xc.h>
 #include <stdlib.h>
+#include <string.h>
 #include <plib/spi.h>
 #include "plib/usart.h"
 #include "../../D/dev/pic/lib/myw5500/myw5500.h"
@@ -16,15 +17,14 @@
 #pragma config FOSC = INTIO67
 #pragma config WDTEN = OFF, LVP = OFF
 
+unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
 
 void setupUSART(void);
 void setupSPI(void);
 void delayOneSecond(void);
-int http_post(void);
+int http_post(unsigned char* data);
 
-/*
- * 
- */
+
 int main(void) {
 
     OSCCONbits.IDLEN = 0;
@@ -36,13 +36,11 @@ int main(void) {
     OSCCONbits.SCS1  = 1;
     OSCCONbits.SCS0  = 1;
 
-    TRISD = 0b00001111;
-    LATDbits.LATD7 = 1;
-    LATDbits.LATD5 = 0;
-    PORTDbits.RD4 = 1;
-
+    TRISD = 0b00000000;
+    LATD = 0b10000000;
     TRISAbits.RA5 = 0;  //SPI slave select
     PORTAbits.RA5 = 1;
+    
 
     //setup interrupts on portb pin0
     INTCON2bits.INTEDG0 = 0;
@@ -62,7 +60,6 @@ int main(void) {
     ANSELH = 0x00;
     TRISBbits.TRISB0 = 1;
 
-
     setupUSART();
     setupSPI();
 
@@ -76,8 +73,8 @@ void setupUSART(void) {
     SPBRG = 0;
     SPBRGH = 0;
 
-    TRISCbits.RC6 = 1; //TX pin set as output
-    TRISCbits.RC7 = 1; //RX pin set as input
+    TRISCbits.RC6 = 1;
+    TRISCbits.RC7 = 1;
 
     // wait until IOFS = 1 (osc. stable)
     while (!OSCCONbits.IOFS);
@@ -134,13 +131,14 @@ void delayOneSecond(void) {
 
 void interrupt isr(void) {
     if (INTCONbits.INT0IF) {
-        LATDbits.LATD5 = ~LATDbits.LATD5;
-        http_post();
+        LATDbits.LATD4 = 1;
+        http_post(postRequest);
+        LATDbits.LATD4 = 0;
     }
     INTCONbits.INT0IF = 0;
 }
 
-int http_post(void) {
+int http_post(unsigned char* data) {
     while(BusyUSART());
         putsUSART((char*)"\r\nOpenning socket... ");
         setSocketTCPMode(SOCKET_1);
@@ -184,11 +182,10 @@ int http_post(void) {
         while(BusyUSART());
         putsUSART(freeSizeString);
 
-        unsigned char data[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
         while(BusyUSART());
         putsUSART((char*)"\r\nNumber of bytes to send: ");
         unsigned char numBytesString[16];
-        itoa(numBytesString, sizeof(data), 16);
+        itoa(numBytesString, strlen(data), 16);
         while(BusyUSART());
         putsUSART(numBytesString);
 
@@ -208,8 +205,8 @@ int http_post(void) {
             while(BusyUSART());
             putsUSART(numBytesString);
 
-        writeToSocketTxBuffer(SOCKET_1_TX_BUFFER, writePointer, data, sizeof(data));
-        writePointer += sizeof(data);
+        writeToSocketTxBuffer(SOCKET_1_TX_BUFFER, writePointer, data);//, strlen(data));
+        writePointer += strlen(data);
 
         writePointerH = (writePointer >> 8) & 0xFF;
         writePointerL = writePointer & 0xFF;
