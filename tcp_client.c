@@ -21,6 +21,7 @@ void setupUSART(void);
 void setupSPI(void);
 void delayOneSecond(void);
 
+
 /*
  * 
  */
@@ -37,9 +38,31 @@ int main(void) {
 
     TRISD = 0b00001111;
     LATDbits.LATD7 = 1;
+    LATDbits.LATD5 = 0;
+    PORTDbits.RD4 = 1;
 
     TRISAbits.RA5 = 0;  //SPI slave select
     PORTAbits.RA5 = 1;
+
+    //setup interrupts on portb pin0
+    INTCON2bits.INTEDG0 = 0;
+    INTCONbits.INT0IF = 0;
+    INTCONbits.INT0IE = 1;
+
+    PIE1 = 0;
+    PIE2 = 0;
+    RCONbits.IPEN = 1;
+    INTCONbits.GIEL = 1;
+    INTCONbits.GIEH = 1;
+
+
+    //setup portb.0 as input
+    INTCON2bits.RBPU = 0;
+    WPUBbits.WPUB0 = 1;
+    ANSELH = 0x00;
+    TRISBbits.TRISB0 = 1;
+
+    
 
     setupUSART();
     setupSPI();
@@ -63,7 +86,7 @@ int main(void) {
 
         uint8_t address[4] = {0xC0, 0xA8, 0x01, 0x67};   //192.168.1.103
         setSocketDestinationIPAddress(SOCKET_1, address);
-        setSocketDestinationPort(SOCKET_1, 4444);
+        setSocketDestinationPort(SOCKET_1, 8080);
         connect(SOCKET_1);
 
         while(1) {
@@ -98,7 +121,7 @@ int main(void) {
         while(BusyUSART());
         putsUSART(freeSizeString);
 
-        unsigned char data[] = "GET /enlighten/calais.asmx HTTP/1.1\n";
+        unsigned char data[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
         while(BusyUSART());
         putsUSART((char*)"\r\nNumber of bytes to send: ");
         unsigned char numBytesString[10];
@@ -242,13 +265,12 @@ void setupUSART(void) {
     unsigned char config=0,spbrg=0,baudconfig=0;
     CloseUSART();
 
-    config = USART_TX_INT_OFF | USART_RX_INT_OFF | USART_ASYNCH_MODE | USART_EIGHT_BIT |
-    USART_CONT_RX | USART_BRGH_HIGH;
+    config = USART_TX_INT_OFF & USART_RX_INT_OFF & USART_ASYNCH_MODE & USART_EIGHT_BIT & USART_CONT_RX & USART_BRGH_HIGH;
     spbrg = 51;   // 9600-N-1 @ 8MHz   BRGH=1 BRG16=0
     OpenUSART(config, spbrg);
 
-    TXSTA = 0b00100100;
-    RCSTA = 0b10010000;
+    //TXSTA = 0b00100100;
+    //RCSTA = 0b10010000;
 
     baudUSART(baudconfig);
 }
@@ -288,4 +310,11 @@ void delayOneSecond(void) {
         __delay_ms(50);
         __delay_ms(50);
         __delay_ms(50);
+}
+
+void interrupt isr(void) {
+    if (INTCONbits.INT0IF) {
+        LATDbits.LATD5 = ~LATDbits.LATD5;
+    }
+    INTCONbits.INT0IF = 0;
 }
