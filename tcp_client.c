@@ -17,7 +17,9 @@
 #pragma config FOSC = INTIO67
 #pragma config WDTEN = OFF, LVP = OFF
 
+unsigned char postHeader[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 14\n\n";
 unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
+unsigned char rxBuffer[32];
 
 void setupUSART(void);
 void setupSPI(void);
@@ -48,9 +50,11 @@ int main(void) {
     INTCONbits.INT0IE = 1;
 
     PIE1 = 0;
+    PIE1bits.RCIE = 1;
     PIE2 = 0;
     RCONbits.IPEN = 1;
     INTCONbits.GIEL = 1;
+    INTCONbits.PEIE = 1;  //for usart receive
     INTCONbits.GIEH = 1;
 
 
@@ -82,7 +86,7 @@ void setupUSART(void) {
     unsigned char config=0,spbrg=0,baudconfig=0;
     CloseUSART();
 
-    config = USART_TX_INT_OFF & USART_RX_INT_OFF & USART_ASYNCH_MODE & USART_EIGHT_BIT & USART_CONT_RX & USART_BRGH_HIGH;
+    config = USART_TX_INT_OFF & USART_RX_INT_ON & USART_ASYNCH_MODE & USART_EIGHT_BIT & USART_CONT_RX & USART_BRGH_HIGH;
     spbrg = 51;   // 9600-N-1 @ 8MHz   BRGH=1 BRG16=0
     OpenUSART(config, spbrg);
 
@@ -135,7 +139,69 @@ void interrupt isr(void) {
         http_post(postRequest);
         LATDbits.LATD4 = 0;
     }
+
+     if (PIR1bits.RCIF) {
+        INTCONbits.GIEH = 0;
+        LATDbits.LATD5 = 1;
+
+          char i;    // Length counter
+          unsigned char data;
+          unsigned char buffer[16];
+
+          for(i=0;i<8;i++) {
+            while(!DataRdyUSART());
+
+            data = getcUSART();
+            
+            if (USART_Status.OVERRUN_ERROR) {
+                LATDbits.LATD0 = 1;
+                setupUSART();
+                LATDbits.LATD0 = 0;
+                break;
+            }
+
+            if (USART_Status.FRAME_ERROR) {
+                LATDbits.LATD1 = 1;
+                setupUSART();
+                LATDbits.LATD0 = 0;
+                break;
+            }
+
+            buffer[i] = data;
+          }
+        
+        unsigned char dat[128] = "param1=";
+        buffer[7] = '\0';
+        strcat(dat, buffer);
+        
+        unsigned char header_data[256];
+        strcpy(header_data,postHeader);
+        
+        strcat(header_data, dat);
+        strcat(header_data, "\n\n");
+        
+        http_post(header_data);
+    }
+
+    LATDbits.LATD5 = 0;
+    PIR1bits.RCIF = 0;
     INTCONbits.INT0IF = 0;
+    INTCONbits.GIEH = 1;
+}
+
+void interrupt low_priority isr_low(void) {
+    if (PIR1bits.RCIF) {
+        PIR1bits.RCIF = 0;
+        LATDbits.LATD5 = 1;
+        //char t = ReadUSART();
+       // while(BusyUSART());
+        unsigned char t = RCREG;
+        //getsUSART((char *)rxBuffer,31);
+        //putsUSART((char*)"\r\nchar... ");
+    }
+
+    LATDbits.LATD5 = 0;
+    PIR1bits.RCIF = 0;
 }
 
 int http_post(unsigned char* data) {
