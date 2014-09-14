@@ -38,6 +38,18 @@ int main(void) {
     OSCCONbits.SCS1  = 1;
     OSCCONbits.SCS0  = 1;
 
+    //timer 0 setup
+    T0CONbits.PSA = 0;
+    T0CONbits.T0PS2 = 1;
+    T0CONbits.T0PS1 = 1;
+    T0CONbits.T0PS0 = 1;
+    T0CONbits.T0CS = 0;
+    T0CONbits.T08BIT = 0;
+
+    TMR0H = 0;
+    TMR0L = 0;
+    T0CONbits.TMR0ON = 1;
+
     TRISD = 0b00000000;
     LATD = 0b10000000;
     TRISAbits.RA5 = 0;  //SPI slave select
@@ -47,6 +59,9 @@ int main(void) {
     //setup interrupts on portb pin0
     INTCON2bits.INTEDG0 = 0;
     INTCONbits.INT0IF = 0;
+    INTCON2bits.TMR0IP = 1;
+    INTCONbits.TMR0IF = 0;
+    INTCONbits.TMR0IE = 1;
     INTCONbits.INT0IE = 1;
 
     PIE1 = 0;
@@ -134,6 +149,13 @@ void delayOneSecond(void) {
 }
 
 void interrupt isr(void) {
+    if (INTCONbits.TMR0IF) {
+        INTCONbits.TMR0IF = 0;
+        LATDbits.LATD3 = ~LATDbits.LATD3;
+        while(BusyUSART());
+        WriteUSART(0x01);
+    }
+
     if (INTCONbits.INT0IF) {
         LATDbits.LATD4 = 1;
         http_post(postRequest);
@@ -186,6 +208,7 @@ void interrupt isr(void) {
     LATDbits.LATD5 = 0;
     PIR1bits.RCIF = 0;
     INTCONbits.INT0IF = 0;
+    INTCONbits.TMR0IF = 0;
     INTCONbits.GIEH = 1;
 }
 
