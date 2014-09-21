@@ -17,8 +17,11 @@
 #pragma config FOSC = INTIO67
 #pragma config WDTEN = OFF, LVP = OFF
 
-unsigned char postHeader[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 14\n\n";
-unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
+//unsigned char postHeader[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 14\n\n";
+unsigned char xivelyPUT[] = "PUT http://173.203.98.29/v2/feeds/992213505 HTTP/1.1\nHost: 173.203.98.29\nAuthorization: Basic aHJpc3RvYm9yaXNvdjpAYmNkITIzNA==\nContent-Length: ";
+unsigned char xivelyPayload[] = "{\"datastreams\":[{\"id\":\"tsensor1\",\"current_value\":\"";
+unsigned char xivelyPayloadTrail[] = "\"}]}";
+//unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
 unsigned char rxBuffer[32];
 
 void setupUSART(void);
@@ -158,7 +161,25 @@ void interrupt isr(void) {
 
     if (INTCONbits.INT0IF) {
         LATDbits.LATD4 = 1;
-        http_post(postRequest);
+        //http_post(postRequest);
+        unsigned char dat[128] = "";
+        //buffer[7] = '\0';
+        strcat(dat, xivelyPayload);
+        strcat(dat, "36.8"); //buffer
+        strcat(dat, xivelyPayloadTrail);
+
+        unsigned char header_data[256];
+        strcpy(header_data, xivelyPUT);
+        char b[16];
+        strcat(header_data, itoa(b, strlen(dat), 10));
+        strcat(header_data, "\n\n");
+
+        strcat(header_data, dat);
+        strcat(header_data, "\n\n");
+
+        while(BusyUSART());
+        putsUSART(header_data);
+        http_post(header_data);
         LATDbits.LATD4 = 0;
     }
 
@@ -192,12 +213,23 @@ void interrupt isr(void) {
             buffer[i] = data;
           }
         
-        unsigned char dat[128] = "param1=";
+        unsigned char dat[128] = "";
         buffer[7] = '\0';
-        strcat(dat, buffer);
+        strcat(dat, xivelyPayload);
+        char temp[5];
+        temp[0] = buffer[4];
+        temp[1] = buffer[5];
+        temp[2] = '.';
+        temp[3] = buffer[6];
+        temp[4] = '\0';
+        strcat(dat, temp); //buffer
+        strcat(dat, xivelyPayloadTrail);
         
         unsigned char header_data[256];
-        strcpy(header_data,postHeader);
+        strcpy(header_data, xivelyPUT);
+        char b[16];
+        strcat(header_data, itoa(b, strlen(dat), 10));
+        strcat(header_data, "\n\n");
         
         strcat(header_data, dat);
         strcat(header_data, "\n\n");
@@ -247,9 +279,12 @@ int http_post(unsigned char* data) {
 
         while(BusyUSART());
         putsUSART((char*)"\r\nSocket connecting... ");
-        uint8_t address[4] = {0xC0, 0xA8, 0x01, 0x67};   //192.168.1.103
+        //uint8_t address[4] = {0xC0, 0xA8, 0x01, 0x67};   //192.168.1.103
+        //setSocketDestinationIPAddress(SOCKET_1, address);
+        //setSocketDestinationPort(SOCKET_1, 8080);
+        uint8_t address[4] = {0xAD, 0xCB, 0x62, 0x1D};   //192.168.1.103
         setSocketDestinationIPAddress(SOCKET_1, address);
-        setSocketDestinationPort(SOCKET_1, 8080);
+        setSocketDestinationPort(SOCKET_1, 80);
         connect(SOCKET_1);
 
         do {
@@ -328,7 +363,11 @@ int http_post(unsigned char* data) {
             while(BusyUSART());
             putsUSART(numBytesString);
 
-
+            delayOneSecond();
+            delayOneSecond();
+            delayOneSecond();
+            delayOneSecond();
+            delayOneSecond();
 //receive process
         uint16_t numBytesReceived = readNumberOfBytesReceived(SOCKET_1);
         while(BusyUSART());
@@ -340,18 +379,18 @@ int http_post(unsigned char* data) {
         while(BusyUSART());
         putsUSART((char*)"\r\n\r\n------------\r\n");
 
-        uint8_t readBuffer[128];
+        uint8_t readBuffer[16]; //read only the http header replace with numBytesReceived; for more
         uint16_t readPointer = readReadPointer(SOCKET_1);
-        readFromSocketRxBufferLen(SOCKET_1_RX_BUFFER, readPointer, readBuffer, numBytesReceived);
+        readFromSocketRxBufferLen(SOCKET_1_RX_BUFFER, readPointer, readBuffer, 16);//numBytesReceived);
 
-        for(int i=0; i<numBytesReceived; i++) {
+        for(int i=0; i<16; i++) {
             while(BusyUSART());
             WriteUSART(readBuffer[i]);
         }
         while(BusyUSART());
         putsUSART((char*)"\r\n------------\r\n");
 
-        readPointer += numBytesReceived;
+        readPointer += numBytesReceived; //here we want to read all the data so that w5500 can receive more
         increaseReadPointer(SOCKET_1, readPointer);
         receive(SOCKET_1);
 
