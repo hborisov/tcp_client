@@ -22,7 +22,7 @@ unsigned char xivelyPUT[] = "PUT http://173.203.98.29/v2/feeds/992213505 HTTP/1.
 unsigned char xivelyPayload[] = "{\"datastreams\":[{\"id\":\"tsensor1\",\"current_value\":\"";
 unsigned char xivelyPayloadTrail[] = "\"}]}";
 //unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
-unsigned char rxBuffer[32];
+uint8_t readBuffer[512];
 
 void setupUSART(void);
 void setupSPI(void);
@@ -87,10 +87,10 @@ int main(void) {
     setupSPI();
 
     //CloseSPI();
-
-    http_server();
-
-    while(1);
+    while (1) {
+        http_server();
+    }
+    
     return 0;
 }
 
@@ -218,7 +218,8 @@ void interrupt isr(void) {
             buffer[i] = data;
           }
         
-        unsigned char dat[128] = "";
+        //unsigned char dat[128] = "";
+          unsigned char dat[2] = "";
         buffer[7] = '\0';
         strcat(dat, xivelyPayload);
         char temp[5];
@@ -230,7 +231,8 @@ void interrupt isr(void) {
         strcat(dat, temp); //buffer
         strcat(dat, xivelyPayloadTrail);
         
-        unsigned char header_data[256];
+        //unsigned char header_data[256];
+        unsigned char header_data[2];
         strcpy(header_data, xivelyPUT);
         char b[16];
         strcat(header_data, itoa(b, strlen(dat), 10));
@@ -313,7 +315,7 @@ int http_post(unsigned char* data) {
 
         //while(BusyUSART());
         //putsUSART((char*)"\r\nNumber of bytes to send: ");
-        unsigned char numBytesString[16];
+        unsigned char numBytesString[8];
         itoa(numBytesString, strlen(data), 16);
         while(BusyUSART());
         putsUSART(numBytesString);
@@ -377,20 +379,20 @@ int http_post(unsigned char* data) {
         uint16_t numBytesReceived = readNumberOfBytesReceived(SOCKET_1);
         //while(BusyUSART());
         //putsUSART((char*)"\r\nNumber of bytes received: ");
-        unsigned char numBytesString[16];
+        unsigned char numBytesString[8];
         itoa(numBytesString, numBytesReceived, 16);
         while(BusyUSART());
         putsUSART(numBytesString);
         //while(BusyUSART());
         //putsUSART((char*)"\r\n\r\n------------\r\n");
 
-        uint8_t readBuffer[16]; //read only the http header replace with numBytesReceived; for more
+        uint8_t readBufferHTTPHeader[16]; //read only the http header replace with numBytesReceived; for more
         uint16_t readPointer = readReadPointer(SOCKET_1);
-        readFromSocketRxBufferLen(SOCKET_1_RX_BUFFER, readPointer, readBuffer, 16);//numBytesReceived);
+        readFromSocketRxBufferLen(SOCKET_1_RX_BUFFER, readPointer, readBufferHTTPHeader, 16);//numBytesReceived);
 
         for(int i=0; i<16; i++) {
             while(BusyUSART());
-            WriteUSART(readBuffer[i]);
+            WriteUSART(readBufferHTTPHeader[i]);
         }
         //while(BusyUSART());
         //putsUSART((char*)"\r\n------------\r\n");
@@ -443,41 +445,63 @@ int http_server(void) {
     //wait for request
     while(1) {
         status = readSocketStatus(SOCKET_2);
+       // while(BusyUSART());
+       // putsUSART((char*)"\r\nstatus\r\n");
+       // while(BusyUSART());
+       // WriteUSART(status);
         if (status == SOCK_ESTABLISHED) {
             while(BusyUSART());
             putsUSART((char*)"\r\nRequest received. ");
 
             uint16_t numBytesReceived = readNumberOfBytesReceived(SOCKET_2);
-            while(BusyUSART());
-            putsUSART((char*)"\r\nNumber of bytes received: ");
-            unsigned char numBytesString[16];
-            itoa(numBytesString, numBytesReceived, 16);
-            while(BusyUSART());
-            putsUSART(numBytesString);
-            //while(BusyUSART());
-            //putsUSART((char*)"\r\n\r\n------------\r\n");
-
-            uint8_t readBuffer[256]; //read only the http header replace with numBytesReceived; for more
-            uint16_t readPointer = readReadPointer(SOCKET_2);
-            readFromSocketRxBufferLen(SOCKET_2_RX_BUFFER, readPointer, readBuffer, numBytesReceived);//numBytesReceived);
-
-            for(int i=0; i<numBytesReceived; i++) {
+            if (numBytesReceived != 0) {
                 while(BusyUSART());
-                WriteUSART(readBuffer[i]);
+                putsUSART((char*)"\r\nNumber of bytes received: ");
+                unsigned char numBytesString[16];
+                itoa(numBytesString, numBytesReceived, 10);
+                while(BusyUSART());
+                putsUSART(numBytesString);
+
+                //uint8_t readBuffer[256];
+                uint16_t readPointer = readReadPointer(SOCKET_2);
+                readFromSocketRxBufferLen(SOCKET_2_RX_BUFFER, readPointer, readBuffer, numBytesReceived);
+
+                /*for(int i=0; i<numBytesReceived; i++) {
+                    while(BusyUSART());
+                    WriteUSART(readBuffer[i]);
+                }*/
+                char line[128];
+                int j=0;
+
+                for (int i=0; i<numBytesReceived; i++) {
+                    if (readBuffer[i] == 0x0D && readBuffer[i+1] == 0x0A && readBuffer[i+2] == 0x0D && readBuffer[i+3] == 0x0A) {
+                        i = i + 4;
+                        j=0;
+                        while (1) {
+                            if (readBuffer[i] == 0x0d || readBuffer[i] == 0x0a || readBuffer[i] == 0x00) {
+                                break;
+                            }
+                            line[j] = readBuffer[i];
+                            i++;
+                            j++;
+                        }
+                    }
+                }
+                line[j] = '\0';
+                while(BusyUSART());
+                putsUSART(line);
+
+                readPointer += numBytesReceived; //here we want to read all the data so that w5500 can receive more
+                increaseReadPointer(SOCKET_2, readPointer);
+                receive(SOCKET_2);
+
+                disconnect(SOCKET_1);
+                do {
+                    status = readSocketStatus(SOCKET_1);
+                } while (status != SOCK_CLOSED);
+
+                return 0;
             }
-            //while(BusyUSART());
-            //putsUSART((char*)"\r\n------------\r\n");
-
-            readPointer += numBytesReceived; //here we want to read all the data so that w5500 can receive more
-            increaseReadPointer(SOCKET_2, readPointer);
-            receive(SOCKET_2);
-
-            disconnect(SOCKET_1);
-            do {
-                status = readSocketStatus(SOCKET_1);
-            } while (status != SOCK_CLOSED);
-
-            return 0;
         }
     }
 
