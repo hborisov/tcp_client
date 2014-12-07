@@ -21,9 +21,18 @@
 unsigned char xivelyPUT[] = "PUT http://173.203.98.29/v2/feeds/992213505 HTTP/1.1\nHost: 173.203.98.29\nAuthorization: Basic aHJpc3RvYm9yaXNvdjpAYmNkITIzNA==\nContent-Length: ";
 unsigned char xivelyPayload[] = "{\"datastreams\":[{\"id\":\"tsensor1\",\"current_value\":\"";
 unsigned char xivelyPayloadTrail[] = "\"}]}";
-//unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
-uint8_t readBuffer[512];
-unsigned char dat[128] = "";
+
+unsigned char getResponseP1[] = "HTTP/1.1 200 OK\nContent-Type: text/plain\nConnection: close\nContent-Length:4\r\n\r\n1238";//\r\n\r\n";
+unsigned char getResponseP2[] = "\r\n\r\n";
+unsigned char responseLength = 0;
+unsigned char responseLengthChar[4];
+unsigned char sensorId[8];
+volatile unsigned char sensorIdReceived = 0;
+        //unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
+uint8_t readBuffer[256];
+uint8_t readBufferS2[256];
+unsigned char dat[192];
+
 //unsigned char header_data[256];
 
 void setupUSART(void);
@@ -68,7 +77,7 @@ int main(void) {
     INTCONbits.INT0IF = 0;
     INTCON2bits.TMR0IP = 1;
     INTCONbits.TMR0IF = 0;
-    INTCONbits.TMR0IE = 1;
+    INTCONbits.TMR0IE = 0;//1;
     INTCONbits.INT0IE = 1;
 
     PIE1 = 0;
@@ -158,7 +167,7 @@ void delayOneSecond(void) {
 }
 
 void interrupt isr(void) {
-    if (INTCONbits.TMR0IF) {
+    if (INTCONbits.TMR0IF && INTCONbits.TMR0IE) {
         INTCONbits.TMR0IF = 0;
         LATDbits.LATD3 = ~LATDbits.LATD3;
         while(BusyUSART());
@@ -259,7 +268,23 @@ void interrupt isr(void) {
         } else if (buffer[0] == 0x02) {
             //if operation == read sensor id
             //i don't know if I needed here
-            sendResponse(buffer);
+            
+            //sendResponse(buffer);
+            sensorIdReceived = 1;
+
+            /*strcat(dat, getResponseP1);
+            //responseLength = strlen(buffer);
+            //itoa(responseLengthChar, responseLength, 10);
+            strcat(dat, "8");//responseLengthChar);
+            strcat(dat, getResponseP2);
+            strcat(dat, buffer);
+            strcat(dat, getResponseP2);
+           */
+           // strcpy(dat, getResponseP1);
+            //strcat(dat, getResponseP2);
+            //memset(dat, '\0', 192);
+            //strcat(dat, getResponseP1);
+
         }
         
     }
@@ -272,7 +297,7 @@ void interrupt isr(void) {
 }
 
 void interrupt low_priority isr_low(void) {
-    if (PIR1bits.RCIF) {
+    /*if (PIR1bits.RCIF) {
         PIR1bits.RCIF = 0;
         LATDbits.LATD5 = 1;
         //char t = ReadUSART();
@@ -284,11 +309,12 @@ void interrupt low_priority isr_low(void) {
 
     LATDbits.LATD5 = 0;
     PIR1bits.RCIF = 0;
+     */
 }
 
 int http_post(unsigned char* data) {
-        while(BusyUSART());
-        putsUSART((char*)"\r\nOpenning socket... ");
+        //while(BusyUSART());
+        //putsUSART((char*)"\r\nOpenning socket... ");
         setSocketTCPMode(SOCKET_1);
         setSocketSourcePort(SOCKET_1, 4443);
         openSocket(SOCKET_1);
@@ -301,11 +327,11 @@ int http_post(unsigned char* data) {
                 return -1;
             }
         } while (status != SOCK_INIT);
-        while(BusyUSART());
-        putsUSART((char*)"\r\nSocket opened. ");
+        //while(BusyUSART());
+        //putsUSART((char*)"\r\nSocket opened. ");
 
-        while(BusyUSART());
-        putsUSART((char*)"\r\nSocket connecting... ");
+        //while(BusyUSART());
+        //putsUSART((char*)"\r\nSocket connecting... ");
         //uint8_t address[4] = {0xC0, 0xA8, 0x01, 0x67};   //192.168.1.103
         //setSocketDestinationIPAddress(SOCKET_1, address);
         //setSocketDestinationPort(SOCKET_1, 8080);
@@ -379,7 +405,7 @@ int http_post(unsigned char* data) {
         writePointer = readWritePointer(SOCKET_1);
         writePointerH = (writePointer >> 8) & 0xFF;
         writePointerL = writePointer & 0xFF;
-        while(BusyUSART());
+        /*while(BusyUSART());
         putsUSART((char*)"\r\nWrite Buffer high byte(after): ");
             itoa(numBytesString, writePointerH, 16);
             while(BusyUSART());
@@ -389,7 +415,7 @@ int http_post(unsigned char* data) {
             itoa(numBytesString, writePointerL, 16);
             while(BusyUSART());
             putsUSART(numBytesString);
-
+*/
             delayOneSecond();
             delayOneSecond();
             delayOneSecond();
@@ -410,10 +436,10 @@ int http_post(unsigned char* data) {
         uint16_t readPointer = readReadPointer(SOCKET_1);
         readFromSocketRxBufferLen(SOCKET_1_RX_BUFFER, readPointer, readBufferHTTPHeader, 16);//numBytesReceived);
 
-        for(int i=0; i<16; i++) {
-            while(BusyUSART());
-            WriteUSART(readBufferHTTPHeader[i]);
-        }
+        //for(int i=0; i<16; i++) {
+        //    while(BusyUSART());
+        //    WriteUSART(readBufferHTTPHeader[i]);
+        //}
         //while(BusyUSART());
         //putsUSART((char*)"\r\n------------\r\n");
 
@@ -465,12 +491,26 @@ int http_server(void) {
     //wait for request
     while(1) {
         status = readSocketStatus(SOCKET_2);
+
+        //while(BusyUSART());
+        //putsUSART((char*)"\r\nhttpserverstatus: ");
+        //unsigned char sock_status[16];
+        //itoa(sock_status, status, 10);
+        //while(BusyUSART());
+        //putsUSART(sock_status);
+
+
+
         if (status == SOCK_ESTABLISHED) {
             //while(BusyUSART());
             //putsUSART((char*)"\r\nRequest received. ");
+         while(1) {
+
 
             uint16_t numBytesReceived = readNumberOfBytesReceived(SOCKET_2);
             if (numBytesReceived != 0) {
+                //while(BusyUSART());
+                //putsUSART((char*)"\r\nnumbytrcv: ");
                 //while(BusyUSART());
                 //putsUSART((char*)"\r\nNumber of bytes received: ");
                 unsigned char numBytesString[16];
@@ -480,7 +520,7 @@ int http_server(void) {
 
                 //uint8_t readBuffer[256];
                 uint16_t readPointer = readReadPointer(SOCKET_2);
-                readFromSocketRxBufferLen(SOCKET_2_RX_BUFFER, readPointer, readBuffer, numBytesReceived);
+                readFromSocketRxBufferLen(SOCKET_2_RX_BUFFER, readPointer, readBufferS2, numBytesReceived);
 
                 /*char line[128];
                 int j=0;
@@ -506,11 +546,16 @@ int http_server(void) {
                 char line[128];
                 int j=0;
                 for (int i=0; i<numBytesReceived; i++, j++) {
-                    if (readBuffer[i] == 0x0d || readBuffer[i] == 0x0a) {
+                    if (readBufferS2[i] == 0x0d || readBufferS2[i] == 0x0a) {
                         break;
                     }
-                    line[j] = readBuffer[i];
+                    line[j] = readBufferS2[i];
                 }
+                
+                readPointer += numBytesReceived; //here we want to read all the data so that w5500 can receive more
+                increaseReadPointer(SOCKET_2, readPointer);
+                receive(SOCKET_2);
+                
                 char* token;
                 token = strtok(line, " ");
                 if (strncmp(token, "GET", 3) == 0) {
@@ -523,102 +568,80 @@ int http_server(void) {
                     //putsUSART("\r\n");
                     //while(BusyUSART());
                     //putsUSART(token);
+                    sensorIdReceived = 0;
                     while(BusyUSART());
                     WriteUSART(0x02);
-                    //sendResponse(get(token));
-                    delayOneSecond();
-                }
-                
 
+                    while (sensorIdReceived != 0) {
+                    }
+                    sendResponse(getResponseP1);
+                    
+                    //sendResponse(get(token));
+                    
+                    // while(BusyUSART());
+                    //putsUSART((char*)"\r\n2sent: ");
+                }
+                //while(BusyUSART());
+                //putsUSART((char*)"\r\nsend02: ");
+                
+                    
+                    
                 
                 //line[j] = '\0';
                 //while(BusyUSART());
                 //putsUSART(line);
+
+                //do {
+                //    status = readSocketStatus(SOCKET_2);
+                //} while (status != SOCK_CLOSE_WAIT);
+
                 
-                readPointer += numBytesReceived; //here we want to read all the data so that w5500 can receive more
-                increaseReadPointer(SOCKET_2, readPointer);
-                receive(SOCKET_2);
+               // disconnect(SOCKET_2);
+               // do {
+               //     status = readSocketStatus(SOCKET_2);
+               // } while (status != SOCK_CLOSED);
 
+               // return 0;
+
+            }
+            status = readSocketStatus(SOCKET_2);
+            if (status == SOCK_CLOSE_WAIT) {
                 disconnect(SOCKET_2);
-                do {
-                    status = readSocketStatus(SOCKET_2);
-                } while (status != SOCK_CLOSED);
-
+            }
+            if (status == SOCK_CLOSED) {
+                close(SOCKET_2);
                 return 0;
             }
-        }
+         }//end while - sock established
+        }// end sock established
+
+
     }
 
     return 0;
 }
 
-char* get(char* path) {
-    /*
-    INTCONbits.GIEH = 0;
-    INTCONbits.GIEL = 0;
-    INTCONbits.PEIE = 0;  //for usart receive
-    //send read id command to sensor and receive response
-    while(BusyUSART());
-    WriteUSART(0x02);
-
-    char i;    // Length counter
-      unsigned char data;
-      unsigned char buffer[16];
-      for(i=0;i<5;i++) {
-        while(!DataRdyUSART());
-
-        data = getcUSART();
-
-        if (USART_Status.OVERRUN_ERROR) {
-            LATDbits.LATD0 = 1;
-            setupUSART();
-            LATDbits.LATD0 = 0;
-            break;
-        }
-
-        if (USART_Status.FRAME_ERROR) {
-            LATDbits.LATD1 = 1;
-            setupUSART();
-            LATDbits.LATD1 = 0;
-            break;
-        }
-
-        buffer[i] = data;
-      }
-      buffer[i+1] = '\0';
-
-      INTCONbits.GIEH = 1;
-      INTCONbits.GIEL = 1;
-      INTCONbits.PEIE = 1;  //for usart receive
-
-      char sendd[6] = "abcd";
-      strncpy(sendd, buffer, 5);
-      sendd[5] = '\0';
-     */
-    return "abcde";//sendd;
-}
-
 void sendResponse(char* dataToSend) {
-    uint16_t freeSize = readTxFreeSize(SOCKET_2);
+    //uint16_t freeSize = readTxFreeSize(SOCKET_2);
     //while(BusyUSART());
     //putsUSART((char*)"\r\nTx buffer free size: ");
-    unsigned char freeSizeString[16];
-    itoa(freeSizeString, freeSize, 16);
+    //unsigned char freeSizeString[16];
+    //itoa(freeSizeString, freeSize, 16);
     //while(BusyUSART());
     //putsUSART(freeSizeString);
 
     //while(BusyUSART());
     //putsUSART((char*)"\r\nNumber of bytes to send: ");
-    unsigned char numBytesString[8];
-    itoa(numBytesString, strlen(dataToSend), 16);
+    //unsigned char numBytesString[8];
+    //itoa(numBytesString, strlen(dataToSend), 16);
     //while(BusyUSART());
     //putsUSART(numBytesString);
 
 
     uint16_t writePointer = readWritePointer(SOCKET_2);
-    uint8_t writePointerH, writePointerL;
-    writePointerH = (writePointer >> 8) & 0xFF;
-    writePointerL = writePointer & 0xFF;
+    //uint8_t writePointerH, writePointerL;
+    //writePointerH = (writePointer >> 8) & 0xFF;
+    //writePointerL = writePointer & 0xFF;
     //while(BusyUSART());
     //putsUSART((char*)"\r\nWrite Buffer high byte: ");
         //itoa(numBytesString, writePointerH, 16);
@@ -629,12 +652,14 @@ void sendResponse(char* dataToSend) {
         //itoa(numBytesString, writePointerL, 16);
         //while(BusyUSART());
         //putsUSART(numBytesString);
-
     writeToSocketTxBuffer(SOCKET_2_TX_BUFFER, writePointer, dataToSend);//, strlen(data));
     writePointer += strlen(dataToSend);
+    //writePointer += strlen(dataToSend);
+    //writeToSocketTxBuffer(SOCKET_2_TX_BUFFER, writePointer, dataToSend);//, strlen(data));
+    //writePointer += strlen(dataToSend);
 
-    writePointerH = (writePointer >> 8) & 0xFF;
-    writePointerL = writePointer & 0xFF;
+    //writePointerH = (writePointer >> 8) & 0xFF;
+    //writePointerL = writePointer & 0xFF;
     //while(BusyUSART());
     //putsUSART((char*)"\r\nWrite Buffer high byte: ");
         //itoa(numBytesString, writePointerH, 16);
@@ -650,9 +675,9 @@ void sendResponse(char* dataToSend) {
 
     send(SOCKET_2);
 
-    writePointer = readWritePointer(SOCKET_2);
-    writePointerH = (writePointer >> 8) & 0xFF;
-    writePointerL = writePointer & 0xFF;
+    //writePointer = readWritePointer(SOCKET_2);
+    //writePointerH = (writePointer >> 8) & 0xFF;
+    //writePointerL = writePointer & 0xFF;
     //while(BusyUSART());
     //putsUSART((char*)"\r\nWrite Buffer high byte(after): ");
         //itoa(numBytesString, writePointerH, 16);
