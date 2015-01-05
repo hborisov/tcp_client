@@ -32,7 +32,7 @@ volatile unsigned int sensorIdReceived = 2;
         //unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
 uint8_t readBuffer[256];
 uint8_t readBufferS2[256];
-volatile unsigned char dat[192];
+volatile unsigned char dat[192];// = "";
 
 //unsigned char header_data[256];
 
@@ -78,7 +78,7 @@ int main(void) {
     INTCONbits.INT0IF = 0;
     INTCON2bits.TMR0IP = 1;
     INTCONbits.TMR0IF = 0;
-    INTCONbits.TMR0IE = 0;//1;
+    INTCONbits.TMR0IE = 1;
     INTCONbits.INT0IE = 1;
 
     PIE1 = 0;
@@ -228,18 +228,15 @@ void interrupt isr(void) {
                 break;
             }
             buffer[i] = data;
-            
-            /*buffer[i] = data;
-            if (buffer[0] == 0x02 && i == 15) {
+            if (buffer[0] == 0x01 && i == 8) {
                 break;
             }
-             * */
+            
           }
           buffer[15] = NULL;
-          
+
         if (buffer[0] == 0x01) {
             memset(dat, '\0', 128);
-            buffer[7] = '\0';
             strcat(dat, xivelyPayload);
             char temp[5];
             temp[0] = buffer[5];
@@ -271,13 +268,10 @@ void interrupt isr(void) {
             strcat(readBuffer, "\n\n");
 
             http_post(readBuffer);
-
-            LATDbits.LATD1 = 1;
         } else if ((buffer[0] == 0x30 && buffer[1] == 0x32) || buffer[0] == 0x02) {
             memset(dat, '\0', 192);
             strcat(dat, buffer);
             sensorIdReceived = 1;
-            LATDbits.LATD0 = 1;
         }
     }
 
