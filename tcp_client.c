@@ -78,7 +78,7 @@ int main(void) {
     INTCONbits.INT0IF = 0;
     INTCON2bits.TMR0IP = 1;
     INTCONbits.TMR0IF = 0;
-    INTCONbits.TMR0IE = 1;
+    INTCONbits.TMR0IE = 0; //enable disable timer interrupt
     INTCONbits.INT0IE = 1;
 
     PIE1 = 0;
@@ -102,6 +102,14 @@ int main(void) {
     //CloseSPI();
     while (1) {
         http_server();
+
+        LATDbits.LATD3 = 0;
+        if (INTCONbits.TMR0IF && PIR1bits.RCIF == 0) {
+            INTCONbits.TMR0IF = 0;
+            LATDbits.LATD6 = ~LATDbits.LATD6;
+            while(BusyUSART());
+            WriteUSART(0x01);
+        }
     }
     
     return 0;
@@ -170,7 +178,7 @@ void delayOneSecond(void) {
 void interrupt isr(void) {
     if (INTCONbits.TMR0IF && INTCONbits.TMR0IE) {
         INTCONbits.TMR0IF = 0;
-        LATDbits.LATD3 = ~LATDbits.LATD3;
+        LATDbits.LATD6 = ~LATDbits.LATD6;
         while(BusyUSART());
         WriteUSART(0x01);
     }
@@ -408,7 +416,7 @@ int http_server(void) {
     setSocketTCPMode(SOCKET_2);
     setSocketSourcePort(SOCKET_2, 8080);
     openSocket(SOCKET_2);
-
+    
     uint8_t status;
     do {
         status = readSocketStatus(SOCKET_2);
@@ -432,6 +440,13 @@ int http_server(void) {
     while(1) {
         status = readSocketStatus(SOCKET_2);
         if (status == SOCK_ESTABLISHED) {
+         LATDbits.LATD3 = 1;
+
+         while (PIR1bits.RCIF) {
+             LATDbits.LATD2 = 1;
+         }
+         LATDbits.LATD2 = 0;
+         
          while(1) {
 
             uint16_t numBytesReceived = readNumberOfBytesReceived(SOCKET_2);
@@ -445,6 +460,8 @@ int http_server(void) {
                 receive(SOCKET_2);
 
                 if (strncmp(readBufferS2, "02", 2) == 0) {
+                    while (PIR1bits.RCIF) {
+                    }
                     sensorIdReceived = 2;
                     while(BusyUSART());
                     WriteUSART(0x02);
@@ -462,12 +479,26 @@ int http_server(void) {
             }
             if (status == SOCK_CLOSED) {
                 close(SOCKET_2);
+                LATDbits.LATD3 = 0;
                 return 0;
             }
-         }//end while - sock established
-        }// end sock established
 
+         }  //end while - sock established
+        } else if (status == SOCK_CLOSE_WAIT) {
+            disconnect(SOCKET_2);
+        } else if (status == SOCK_CLOSED) {
+            close(SOCKET_2);
+            LATDbits.LATD3 = 0;
+            return 0;
+        }
 
+        LATDbits.LATD3 = 0;
+        if (INTCONbits.TMR0IF && PIR1bits.RCIF == 0) {
+            INTCONbits.TMR0IF = 0;
+            LATDbits.LATD6 = ~LATDbits.LATD6;
+            while(BusyUSART());
+            WriteUSART(0x01);
+        }
     }
 
     return 0;
