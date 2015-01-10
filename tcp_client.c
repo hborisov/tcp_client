@@ -28,7 +28,8 @@ unsigned char getResponseP2[] = "\r\n\r\n";
 unsigned char responseLength = 0;
 unsigned char responseLengthChar[4];
 unsigned char sensorId[8];
-volatile unsigned int sensorIdReceived = 2;
+volatile unsigned int sensorIdReceived = 0;
+volatile unsigned int temperatureReceived = 0;
         //unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
 uint8_t readBuffer[256];
 uint8_t readBufferS2[256];
@@ -103,13 +104,18 @@ int main(void) {
     while (1) {
         http_server();
 
-        LATDbits.LATD3 = 0;
+        /*LATDbits.LATD3 = 0;
         if (INTCONbits.TMR0IF && PIR1bits.RCIF == 0) {
             INTCONbits.TMR0IF = 0;
             LATDbits.LATD6 = ~LATDbits.LATD6;
             while(BusyUSART());
             WriteUSART(0x01);
         }
+
+        if (temperatureReceived == 1) {
+            http_post(readBuffer);
+            temperatureReceived == 0;
+        }*/
     }
     
     return 0;
@@ -176,12 +182,12 @@ void delayOneSecond(void) {
 }
 
 void interrupt isr(void) {
-    if (INTCONbits.TMR0IF && INTCONbits.TMR0IE) {
+    /*if (INTCONbits.TMR0IF && INTCONbits.TMR0IE) {
         INTCONbits.TMR0IF = 0;
         LATDbits.LATD6 = ~LATDbits.LATD6;
         while(BusyUSART());
         WriteUSART(0x01);
-    }
+    }*/
 
     if (INTCONbits.INT0IF) {
         /*
@@ -275,7 +281,8 @@ void interrupt isr(void) {
             strcat(readBuffer, dat);
             strcat(readBuffer, "\n\n");
 
-            http_post(readBuffer);
+            temperatureReceived = 1;
+            //http_post(readBuffer);
         } else if ((buffer[0] == 0x30 && buffer[1] == 0x32) || buffer[0] == 0x02) {
             memset(dat, '\0', 192);
             strcat(dat, buffer);
@@ -460,13 +467,13 @@ int http_server(void) {
                 receive(SOCKET_2);
 
                 if (strncmp(readBufferS2, "02", 2) == 0) {
-                    while (PIR1bits.RCIF) {
-                    }
-                    sensorIdReceived = 2;
+                    //while (PIR1bits.RCIF) {
+                    //}
+                    sensorIdReceived = 0;
                     while(BusyUSART());
                     WriteUSART(0x02);
 
-                    while (sensorIdReceived == 2) {
+                    while (sensorIdReceived == 0) {
                     }
 
                     sendResponse(dat);
@@ -495,10 +502,19 @@ int http_server(void) {
         LATDbits.LATD3 = 0;
         if (INTCONbits.TMR0IF && PIR1bits.RCIF == 0) {
             INTCONbits.TMR0IF = 0;
-            LATDbits.LATD6 = ~LATDbits.LATD6;
+            LATDbits.LATD6 = 1;
             while(BusyUSART());
             WriteUSART(0x01);
+
+            while (temperatureReceived != 1) {
+            }
+            http_post(readBuffer);
+            temperatureReceived == 0;
+            LATDbits.LATD6 = 0;
         }
+
+        
+
     }
 
     return 0;
