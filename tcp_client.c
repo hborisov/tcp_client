@@ -18,22 +18,24 @@
 #pragma config WDTEN = OFF, LVP = OFF
 
 //unsigned char postHeader[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 14\n\n";
-unsigned char xivelyPUT[] = "PUT http://173.203.98.29/v2/feeds/992213505 HTTP/1.1\nHost: 173.203.98.29\nAuthorization: Basic aHJpc3RvYm9yaXNvdjpAYmNkITIzNA==\nContent-Length: ";
-unsigned char xivelyPayload[] = "{\"datastreams\":[{\"id\":\"tsensor1\",\"current_value\":\"";
-unsigned char xivelyPayloadTrail[] = "\"}]}";
-
+volatile unsigned char xivelyPUT1[] = "PUT http://173.203.98.29/v2/feeds/";
+volatile unsigned char xivelyPUT2[] = " HTTP/1.1\nHost: 173.203.98.29\nAuthorization: Basic aHJpc3RvYm9yaXNvdjpAYmNkITIzNA==\nContent-Length: ";
+volatile unsigned char xivelyPayload[] = "{\"datastreams\":[{\"id\":\"tsensor1\",\"current_value\":\"";
+volatile unsigned char xivelyPayloadTrail[] = "\"}]}";
+volatile unsigned char feedId[16];
 //unsigned char getResponseP1[] = "HTTP/1.1 200 OK\nContent-Type: text/plain\nConnection: close\nContent-Length:4\r\n\r\n1238";//\r\n\r\n";
 
-unsigned char getResponseP2[] = "\r\n\r\n";
-unsigned char responseLength = 0;
-unsigned char responseLengthChar[4];
-unsigned char sensorId[8];
-volatile unsigned int sensorIdReceived = 0;
-volatile unsigned int temperatureReceived = 0;
+volatile unsigned char getResponseP2[] = "\r\n\r\n";
+volatile unsigned char responseLength = 0;
+volatile unsigned char responseLengthChar[4];
+volatile unsigned char sensorId[8];
+volatile unsigned char sensorIdReceived = 0;
+volatile unsigned char temperatureReceived = 0;
         //unsigned char postRequest[] = "POST http://192.168.1.103/http_server/REST HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 13\n\nparam1=value2\n\n";
-uint8_t readBuffer[256];
-uint8_t readBufferS2[256];
-volatile unsigned char dat[192];// = "";
+volatile unsigned char readBuffer[256];
+volatile unsigned char readBufferS2[256];
+volatile unsigned char dat[192];
+volatile unsigned char buffer[16];
 
 //unsigned char header_data[256];
 
@@ -100,6 +102,22 @@ int main(void) {
     setupUSART();
     setupSPI();
 
+    //read last sensor serial number
+    memset(feedId, '\0', 16);
+    unsigned char feedIdIndex = 0;
+    unsigned char eepromByte = NULL;
+    eepromByte = eeprom_read(0x00);
+    while (eepromByte != ';' && eepromByte != 0xFF) {
+        feedId[feedIdIndex] = eepromByte;
+        feedIdIndex++;
+        eepromByte = eeprom_read(feedIdIndex);
+    }
+    feedId[feedIdIndex] = '\0';
+    if (feedId[10] == 0x39) {
+        LATDbits.LATD0 = 1;
+    }
+
+
     //CloseSPI();
     while (1) {
         http_server();
@@ -107,15 +125,17 @@ int main(void) {
         /*LATDbits.LATD3 = 0;
         if (INTCONbits.TMR0IF && PIR1bits.RCIF == 0) {
             INTCONbits.TMR0IF = 0;
-            LATDbits.LATD6 = ~LATDbits.LATD6;
+            LATDbits.LATD6 = 1;
             while(BusyUSART());
             WriteUSART(0x01);
-        }
 
-        if (temperatureReceived == 1) {
+            while (temperatureReceived != 1) {
+            }
+            temperatureReceived = 0;
             http_post(readBuffer);
-            temperatureReceived == 0;
-        }*/
+            LATDbits.LATD6 = 0;
+        }
+         */
     }
     
     return 0;
@@ -221,7 +241,7 @@ void interrupt isr(void) {
 
           char i;    // Length counter
           unsigned char data;
-          unsigned char buffer[16];
+          
           memset(buffer, '\0', 16);
           
           for(i=0; i<15; i++) {
@@ -243,13 +263,17 @@ void interrupt isr(void) {
             }
             buffer[i] = data;
             if (buffer[0] == 0x01 && i == 8) {
+                buffer[9] = '\0';
                 break;
             }
             
           }
           buffer[15] = NULL;
 
+          LATDbits.LATD0 = ~LATDbits.LATD0;
         if (buffer[0] == 0x01) {
+            LATDbits.LATD1 = ~LATDbits.LATD1;
+
             memset(dat, '\0', 128);
             strcat(dat, xivelyPayload);
             char temp[5];
@@ -273,7 +297,11 @@ void interrupt isr(void) {
             http_post(header_data);*/
             //unsigned char header_data[256];
             //memcpy(readBuffer, '\0', 512);
-            strcpy(readBuffer, xivelyPUT);
+            memset(readBuffer, '\0', 256);
+            strcpy(readBuffer, xivelyPUT1);
+            strcat(readBuffer, feedId);
+            strcat(readBuffer, xivelyPUT2);
+
             char b[16];
             strcat(readBuffer, itoa(b, strlen(dat), 10));
             strcat(readBuffer, "\n\n");
@@ -282,6 +310,7 @@ void interrupt isr(void) {
             strcat(readBuffer, "\n\n");
 
             temperatureReceived = 1;
+            
             //http_post(readBuffer);
         } else if ((buffer[0] == 0x30 && buffer[1] == 0x32) || buffer[0] == 0x02) {
             memset(dat, '\0', 192);
@@ -465,26 +494,58 @@ int http_server(void) {
                 readPointer += numBytesReceived; //here we want to read all the data so that w5500 can receive more
                 increaseReadPointer(SOCKET_2, readPointer);
                 receive(SOCKET_2);
-
+                
                 if (strncmp(readBufferS2, "02", 2) == 0) {
-                    //while (PIR1bits.RCIF) {
-                    //}
+                    
                     sensorIdReceived = 0;
                     while(BusyUSART());
                     WriteUSART(0x02);
-
-                    while (sensorIdReceived == 0) {
+                     LATDbits.LATD0 = 1;
+                     for (int q=0; q<5; q++) {
+                        LATDbits.LATD4 = ~LATDbits.LATD4;
+                        __delay_ms(50);
+                        __delay_ms(50);
+                        __delay_ms(50);
+                        __delay_ms(50);
+                        if (sensorIdReceived != 0) {
+                            break;
+                        }
                     }
+                    LATDbits.LATD0 = 0;
+                    if (sensorIdReceived == 1) {
+                        sendResponse(dat);
+                    } else {
+                        sendResponse((char*) "[ERROR]");
+                    }
+                } else if (strncmp(readBufferS2, "03", 2) == 0) {
+                    memset(feedId, '\0', 16);
+                    int p=0;
+                    while (1) {
+                        if (p==14 || readBufferS2[p+3] == ';') {
+                            eeprom_write(p, ';');
+                            break;
+                        }
 
-                    sendResponse(dat);
-
+                        feedId[p] = readBufferS2[p+3];
+                        eeprom_write(p, readBufferS2[p+3]);
+                         
+                        p++;
+                    }
+                    feedId[++p] = '\0';
+                    sendResponse((char*) "[SUCCESS]");
                 }
             }
+            
             status = readSocketStatus(SOCKET_2);
             if (status == SOCK_CLOSE_WAIT) {
+                LATDbits.LATD2 = 1;
                 disconnect(SOCKET_2);
+                close(SOCKET_2);
+                LATDbits.LATD3 = 0;
+                return 0;
             }
             if (status == SOCK_CLOSED) {
+                LATDbits.LATD1 = 1;
                 close(SOCKET_2);
                 LATDbits.LATD3 = 0;
                 return 0;
@@ -493,6 +554,9 @@ int http_server(void) {
          }  //end while - sock established
         } else if (status == SOCK_CLOSE_WAIT) {
             disconnect(SOCKET_2);
+            close(SOCKET_2);
+            LATDbits.LATD3 = 0;
+            return 0;
         } else if (status == SOCK_CLOSED) {
             close(SOCKET_2);
             LATDbits.LATD3 = 0;
@@ -506,10 +570,20 @@ int http_server(void) {
             while(BusyUSART());
             WriteUSART(0x01);
 
-            while (temperatureReceived != 1) {
+            for (int q=0; q<5; q++) {
+                LATDbits.LATD4 = ~LATDbits.LATD4;
+                __delay_ms(50);
+                __delay_ms(50);
+                __delay_ms(50);
+                __delay_ms(50);
+                if (temperatureReceived != 0) {
+                    break;
+                }
             }
+            //while (temperatureReceived != 1) {
+            //}
+            temperatureReceived = 0;
             http_post(readBuffer);
-            temperatureReceived == 0;
             LATDbits.LATD6 = 0;
         }
 
