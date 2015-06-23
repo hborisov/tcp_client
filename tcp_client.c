@@ -121,21 +121,6 @@ int main(void) {
     //CloseSPI();
     while (1) {
         http_server();
-
-        /*LATDbits.LATD3 = 0;
-        if (INTCONbits.TMR0IF && PIR1bits.RCIF == 0) {
-            INTCONbits.TMR0IF = 0;
-            LATDbits.LATD6 = 1;
-            while(BusyUSART());
-            WriteUSART(0x01);
-
-            while (temperatureReceived != 1) {
-            }
-            temperatureReceived = 0;
-            http_post(readBuffer);
-            LATDbits.LATD6 = 0;
-        }
-         */
     }
     
     return 0;
@@ -202,37 +187,8 @@ void delayOneSecond(void) {
 }
 
 void interrupt isr(void) {
-    /*if (INTCONbits.TMR0IF && INTCONbits.TMR0IE) {
-        INTCONbits.TMR0IF = 0;
-        LATDbits.LATD6 = ~LATDbits.LATD6;
-        while(BusyUSART());
-        WriteUSART(0x01);
-    }*/
 
     if (INTCONbits.INT0IF) {
-        /*
-        LATDbits.LATD4 = 1;
-        //http_post(postRequest);
-        unsigned char dat[128] = "";
-        //buffer[7] = '\0';
-        strcat(dat, xivelyPayload);
-        strcat(dat, "36.8"); //buffer
-        strcat(dat, xivelyPayloadTrail);
-
-        unsigned char header_data[256];
-        strcpy(header_data, xivelyPUT);
-        char b[16];
-        strcat(header_data, itoa(b, strlen(dat), 10));
-        strcat(header_data, "\n\n");
-
-        strcat(header_data, dat);
-        strcat(header_data, "\n\n");
-
-        while(BusyUSART());
-        putsUSART(header_data);
-        http_post(header_data);
-        LATDbits.LATD4 = 0;
-         */
     }
 
      if (PIR1bits.RCIF) {
@@ -285,18 +241,6 @@ void interrupt isr(void) {
             strcat(dat, temp); //buffer
             strcat(dat, xivelyPayloadTrail);
 
-            /*/unsigned char header_data[256];
-
-            char b[16];
-            strcat(header_data, itoa(b, strlen(dat), 10));
-            strcat(header_data, "\n\n");
-
-            strcat(header_data, dat);
-            strcat(header_data, "\n\n");
-
-            http_post(header_data);*/
-            //unsigned char header_data[256];
-            //memcpy(readBuffer, '\0', 512);
             memset(readBuffer, '\0', 256);
             strcpy(readBuffer, xivelyPUT1);
             strcat(readBuffer, feedId);
@@ -311,7 +255,6 @@ void interrupt isr(void) {
 
             temperatureReceived = 1;
             
-            //http_post(readBuffer);
         } else if ((buffer[0] == 0x30 && buffer[1] == 0x32) || buffer[0] == 0x02) {
             memset(dat, '\0', 192);
             strcat(dat, buffer);
@@ -327,19 +270,6 @@ void interrupt isr(void) {
 }
 
 void interrupt low_priority isr_low(void) {
-    /*if (PIR1bits.RCIF) {
-        PIR1bits.RCIF = 0;
-        LATDbits.LATD5 = 1;
-        //char t = ReadUSART();
-       // while(BusyUSART());
-        unsigned char t = RCREG;
-        //getsUSART((char *)rxBuffer,31);
-        //putsUSART((char*)"\r\nchar... ");
-    }
-
-    LATDbits.LATD5 = 0;
-    PIR1bits.RCIF = 0;
-     */
 }
 
 int http_post(unsigned char* data) {
@@ -580,8 +510,7 @@ int http_server(void) {
                     break;
                 }
             }
-            //while (temperatureReceived != 1) {
-            //}
+            
             temperatureReceived = 0;
             http_post(readBuffer);
             LATDbits.LATD6 = 0;
